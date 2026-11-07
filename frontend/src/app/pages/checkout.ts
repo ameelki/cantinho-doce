@@ -6,6 +6,7 @@ import { AuthService } from '../core/auth.service';
 import { CartService } from '../core/cart.service';
 import { SettingsService } from '../core/settings.service';
 import { DaySlots, DeliveryQuote, Order, OrderMode } from '../core/models';
+import { localeTag } from '../core/i18n.service';
 import { dateFr, errMsg, money } from '../core/util';
 
 @Component({
@@ -35,22 +36,27 @@ import { dateFr, errMsg, money } from '../core/util';
               @if (mode === 'DELIVERY' && settings.str('delivery.info')) { <p class="small muted">{{ settings.str('delivery.info') }}</p> }
             </div>
 
-            <div class="form-grid">
-              <div class="field">
-                <label for="day">{{ mode === 'DELIVERY' ? 'Jour de livraison' : 'Jour de retrait' }}</label>
-                <select id="day" name="day" [(ngModel)]="day" (ngModelChange)="time = ''" required>
-                  <option value="">Choisir un jour…</option>
-                  @for (d of days(); track d.date) { <option [value]="d.date">{{ dateFr(d.date) }}</option> }
-                </select>
-              </div>
-              <div class="field">
-                <label for="time">Heure</label>
-                <select id="time" name="time" [(ngModel)]="time" required [disabled]="!day">
-                  <option value="">Choisir une heure…</option>
-                  @for (t of times(); track t) { <option [value]="t">{{ t }}</option> }
-                </select>
+            <div class="field">
+              <span class="lbl">{{ mode === 'DELIVERY' ? 'Jour de livraison' : 'Jour de retrait' }}</span>
+              <div class="slot-row" role="group" aria-label="Jour">
+                @for (d of days(); track d.date) {
+                  <button type="button" class="slot day-chip" [class.on]="day === d.date" [attr.aria-pressed]="day === d.date" (click)="pickDay(d.date)">
+                    <span class="small">{{ dayShort(d.date) }}</span><b>{{ dayNum(d.date) }}</b><span class="small">{{ monthShort(d.date) }}</span>
+                  </button>
+                }
               </div>
             </div>
+            @if (day) {
+              <div class="field">
+                <span class="lbl">Heure</span>
+                <div class="slot-grid" role="group" aria-label="Heure">
+                  @for (t of times(); track t) {
+                    <button type="button" class="slot" [class.on]="time === t" [attr.aria-pressed]="time === t" (click)="time = t">{{ t }}</button>
+                  }
+                </div>
+              </div>
+            }
+            @if (day && time) { <p class="ok-msg">{{ dateFr(day) }}, {{ time }}</p> }
             @if (loadedDays && !days().length) { <p class="err">Aucun créneau disponible pour le moment. Revenez bientôt ou contactez-nous.</p> }
             <p class="small muted">Commande à passer au moins {{ settings.num('schedule.leadHours') }} h à l'avance, jusqu'à {{ settings.num('schedule.maxDays') }} jours.</p>
 
@@ -118,6 +124,16 @@ export class CheckoutPage implements OnInit {
   quote: DeliveryQuote | null = null;
   busy = false;
   error = '';
+
+  pickDay(d: string) { this.day = d; this.time = ''; }
+
+  private dt(iso: string): Date {
+    const [y, m, d] = iso.split('-').map(Number);
+    return new Date(y, m - 1, d);
+  }
+  dayShort(iso: string): string { return this.dt(iso).toLocaleDateString(localeTag(), { weekday: 'short' }); }
+  dayNum(iso: string): string { return String(this.dt(iso).getDate()); }
+  monthShort(iso: string): string { return this.dt(iso).toLocaleDateString(localeTag(), { month: 'short' }); }
 
   times(): string[] {
     return this.schedule().find((d) => d.date === this.day)?.times ?? [];
