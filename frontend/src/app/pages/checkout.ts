@@ -57,7 +57,9 @@ import { dateFr, errMsg, money } from '../core/util';
               </div>
             }
             @if (day && time) { <p class="ok-msg">{{ dateFr(day) }}, {{ time }}</p> }
-            @if (loadedDays && !days().length) { <p class="err">Aucun créneau disponible pour le moment. Revenez bientôt ou contactez-nous.</p> }
+            @if (!loadedDays) { <p class="muted">Chargement des créneaux… (le premier chargement peut prendre une minute)</p> }
+            @if (loadFailed) { <p class="err">Impossible de charger les créneaux. <button type="button" class="btn btn-ghost btn-sm" (click)="loadSchedule()">Réessayer</button></p> }
+            @if (loadedDays && !loadFailed && !days().length) { <p class="err">Aucun créneau disponible pour le moment. Revenez bientôt ou contactez-nous.</p> }
             <p class="small muted">Commande à passer au moins {{ settings.num('schedule.leadHours') }} h à l'avance, jusqu'à {{ settings.num('schedule.maxDays') }} jours.</p>
 
             @if (mode === 'DELIVERY') {
@@ -111,6 +113,7 @@ export class CheckoutPage implements OnInit {
   schedule = signal<DaySlots[]>([]);
   days = computed(() => this.schedule());
   loadedDays = false;
+  loadFailed = false;
   mode: OrderMode = 'PICKUP';
   day = '';
   time = '';
@@ -147,9 +150,15 @@ export class CheckoutPage implements OnInit {
     this.mode = this.settings.bool('orders.pickup.enabled') ? 'PICKUP' : 'DELIVERY';
     const u = this.auth.user();
     if (u) { this.name = u.name; this.phone = u.phone || ''; this.email = u.email; }
+    this.loadSchedule();
+  }
+
+  loadSchedule() {
+    this.loadedDays = false;
+    this.loadFailed = false;
     this.api.get<DaySlots[]>('/public/schedule').subscribe({
       next: (d) => { this.schedule.set(d); this.loadedDays = true; },
-      error: () => (this.loadedDays = true),
+      error: () => { this.loadFailed = true; this.loadedDays = true; },
     });
   }
 

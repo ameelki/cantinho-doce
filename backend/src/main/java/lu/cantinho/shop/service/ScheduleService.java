@@ -28,60 +28,67 @@ public class ScheduleService {
         this.orders = orders;
     }
 
-    private LocalTime time(String key, String fallback) {
+    /** Réglages de créneaux lus une seule fois par requête (évite des centaines de lectures en base). */
+    private record Cfg(LocalTime from, LocalTime to, int step, Set<Integer> closed, int maxPerSlot, int leadHours, int maxDays) {}
+
+    private static int toInt(String v, int fallback) {
         try {
-            return LocalTime.parse(settings.str(key).trim());
+            return Integer.parseInt(v == null ? "" : v.trim());
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
+    }
+
+    private static LocalTime toTime(String v, String fallback) {
+        try {
+            return LocalTime.parse(v == null ? "" : v.trim());
         } catch (Exception e) {
             return LocalTime.parse(fallback);
         }
     }
 
-    private Set<Integer> closedWeekdays() {
-        Set<Integer> out = new HashSet<>();
-        for (String p : settings.str("schedule.closedWeekdays").split("[,; ]+")) {
+    private Cfg cfg() {
+        Map<String, String> m = settings.all();
+        Set<Integer> closed = new HashSet<>();
+        for (String p : m.getOrDefault("schedule.closedWeekdays", "").split("[,; ]+")) {
             try {
-                out.add(Integer.parseInt(p.trim()));
+                closed.add(Integer.parseInt(p.trim()));
             } catch (NumberFormatException ignored) {
                 // valeur vide ou invalide : ignorée
             }
         }
-        return out;
+        return new Cfg(toTime(m.get("schedule.openFrom"), "10:00"), toTime(m.get("schedule.openTo"), "19:00"),
+                Math.max(10, toInt(m.get("schedule.slotMinutes"), 60)), closed,
+                toInt(m.get("schedule.maxPerSlot"), 0), toInt(m.get("schedule.leadHours"), 24),
+                Math.max(1, toInt(m.get("schedule.maxDays"), 14)));
     }
 
     /** Tous les créneaux théoriques d'un jour, sans tenir compte du délai ni de la capacité. */
-    private List<LocalDateTime> daySlots(LocalDate d) {
+    private List<LocalDateTime> daySlots(LocalDate d, Cfg c) {
         List<LocalDateTime> out = new ArrayList<>();
-        if (closedWeekdays().contains(d.getDayOfWeek().getValue())) return out;
-        LocalTime from = time("schedule.openFrom", "10:00");
-        LocalTime to = time("schedule.openTo", "19:00");
-        int step = Math.max(10, settings.integer("schedule.slotMinutes"));
-        for (LocalDateTime t = d.atTime(from); !t.toLocalTime().isAfter(to) && t.toLocalDate().equals(d); t = t.plusMinutes(step)) {
+        if (c.closed().contains(d.getDayOfWeek().getValue())) return out;
+        for (LocalDateTime t = d.atTime(c.from()); !t.toLocalTime().isAfter(c.to()) && t.toLocalDate().equals(d); t = t.plusMinutes(c.step())) {
             out.add(t);
         }
         return out;
     }
 
-    private boolean full(LocalDateTime slot) {
-        int max = settings.integer("schedule.maxPerSlot");
-        if (max <= 0) return false;
-        return orders.countByScheduledAtAndStatusNot(slot, Enums.OrderStatus.CANCELLED) >= max;
-    }
-
-    private LocalDateTime earliest() {
-        return LocalDateTime.now().plusHours(settings.integer("schedule.leadHours"));
+    private boolean full(LocalDateTime slot, Cfg c) {
+        if (c.maxPerSlot() <= 0) return false;
+        return orders.countByScheduledAtAndStatusNot(slot, Enums.OrderStatus.CANCELLED) >= c.maxPerSlot();
     }
 
     /** Jours à venir avec leurs heures encore disponibles (les jours sans créneau sont omis). */
     public List<Dto.DaySlots> schedule() {
+        Cfg c = cfg();
         List<Dto.DaySlots> out = new ArrayList<>();
-        LocalDateTime min = earliest();
-        int days = Math.max(1, settings.integer("schedule.maxDays"));
+        LocalDateTime min = LocalDateTime.now().plusHours(c.leadHours());
         LocalDate today = LocalDate.now();
-        for (int i = 0; i <= days; i++) {
+        for (int i = 0; i <= c.maxDays(); i++) {
             LocalDate d = today.plusDays(i);
             List<String> times = new ArrayList<>();
-            for (LocalDateTime t : daySlots(d)) {
-                if (t.isBefore(min) || full(t)) continue;
+            for (LocalDateTime t : daySlots(d, c)) {
+                if (t.isBefore(min) || full(t, c)) continue;
                 times.add(t.toLocalTime().toString());
             }
             if (!times.isEmpty()) out.add(new Dto.DaySlots(d, times));
@@ -92,13 +99,14 @@ public class ScheduleService {
     /** Refuse un créneau hors horaires, trop proche, trop lointain ou complet. */
     public void check(LocalDateTime slot) {
         if (slot == null) throw Errors.bad("Choisissez le jour et l'heure.");
-        if (slot.isBefore(earliest().minusMinutes(1)))
-            throw Errors.bad("Ce créneau est trop proche : prévoyez au moins " + settings.integer("schedule.leadHours") + " h.");
-        if (slot.toLocalDate().isAfter(LocalDate.now().plusDays(settings.integer("schedule.maxDays"))))
+        Cfg c = cfg();
+        if (slot.isBefore(LocalDateTime.now().plusHours(c.leadHours()).minusMinutes(1)))
+            throw Errors.bad("Ce créneau est trop proche : prévoyez au moins " + c.leadHours() + " h.");
+        if (slot.toLocalDate().isAfter(LocalDate.now().plusDays(c.maxDays())))
             throw Errors.bad("Ce jour est trop éloigné.");
-        if (!daySlots(slot.toLocalDate()).contains(slot.withSecond(0).withNano(0)))
+        if (!daySlots(slot.toLocalDate(), c).contains(slot.withSecond(0).withNano(0)))
             throw Errors.bad("Ce créneau n'est pas proposé (jour fermé ou heure hors créneaux).");
-        if (full(slot)) throw Errors.bad("Ce créneau est complet, choisissez-en un autre.");
+        if (full(slot, c)) throw Errors.bad("Ce créneau est complet, choisissez-en un autre.");
     }
 
     /** Zones « Ville:frais » séparées par des virgules ou des retours à la ligne. */
