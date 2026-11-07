@@ -149,7 +149,8 @@ export class CheckoutPage implements OnInit {
   ngOnInit() {
     this.mode = this.settings.bool('orders.pickup.enabled') ? 'PICKUP' : 'DELIVERY';
     const u = this.auth.user();
-    if (u) { this.name = u.name; this.phone = u.phone || ''; this.email = u.email; }
+    // Seuls les clients préremplissent leurs infos : un compte admin/atelier garde un formulaire vide.
+    if (u && u.role === 'CUSTOMER') { this.name = u.name; this.phone = u.phone || ''; this.email = u.email; }
     this.loadSchedule();
   }
 
