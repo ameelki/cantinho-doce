@@ -51,3 +51,5 @@ Le plan gratuit de Render s'endort après ~15 min d'inactivité (premier chargem
 | Livraison et créneaux | retrait/livraison, horaires, délai, jours fermés, frais, zones |
 | Thème et design | ambiances, couleurs, polices, arrondi, texte d'accueil |
 | Réglages | nom, contact, textes traduits |
+
+Dernière mise à jour du déploiement : 2026-11-07.
