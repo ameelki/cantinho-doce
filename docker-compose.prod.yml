@@ -1,0 +1,44 @@
+# Déploiement complet sur un serveur :
+#   cp .env.example .env   (puis modifier les valeurs)
+#   docker compose -f docker-compose.prod.yml up -d --build
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: cantinho
+      POSTGRES_USER: cantinho
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cantinho -d cantinho"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      DB_URL: jdbc:postgresql://db:5432/cantinho
+      DB_USER: cantinho
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      KITCHEN_EMAIL: ${KITCHEN_EMAIL}
+      KITCHEN_PASSWORD: ${KITCHEN_PASSWORD}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      FRONT_URL: ${CORS_ORIGINS}
+      SEED_DEMO: ${SEED_DEMO:-true}
+
+  web:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on: [backend]
+    ports: ["80:80"]
+
+volumes:
+  pgdata:

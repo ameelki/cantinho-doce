@@ -1,0 +1,25 @@
+#cloud-config
+# À coller dans Oracle Cloud > Create instance > Advanced options > Management > "Cloud-init script".
+# Remplacez les 4 valeurs "CHANGEZ-MOI" AVANT de créer l'instance. Le serveur installe et lance tout seul (5 à 10 min).
+package_update: true
+packages: [docker.io, docker-compose-v2, git]
+runcmd:
+  - systemctl enable --now docker
+  - iptables -I INPUT -p tcp --dport 80 -j ACCEPT
+  - iptables -I INPUT -p tcp --dport 443 -j ACCEPT
+  - git clone https://github.com/ameelki/cantinho-doce /opt/cantinho-doce
+  - |
+    cd /opt/cantinho-doce
+    IP=$(curl -s ifconfig.me)
+    cat > .env <<EOF
+    DB_PASSWORD=CHANGEZ-MOI-DB
+    JWT_SECRET=CHANGEZ-MOI-une-longue-phrase-aleatoire-de-40-caracteres
+    ADMIN_EMAIL=admin@votre-cafe.lu
+    ADMIN_PASSWORD=CHANGEZ-MOI-ADMIN
+    KITCHEN_EMAIL=cuisine@votre-cafe.lu
+    KITCHEN_PASSWORD=CHANGEZ-MOI-CUISINE
+    CORS_ORIGINS=http://$IP
+    SEED_DEMO=true
+    EOF
+    sed -i 's/^    //' .env
+  - cd /opt/cantinho-doce && docker compose -f docker-compose.prod.yml up -d --build

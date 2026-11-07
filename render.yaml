@@ -1,0 +1,29 @@
+# Déploiement du back-end sur Render (Blueprint). La base PostgreSQL est à créer chez Neon / Supabase / Render.
+services:
+  - type: web
+    name: cantinho-doce-backend
+    runtime: docker
+    rootDir: backend
+    plan: free
+    healthCheckPath: /actuator/health
+    envVars:
+      - key: DB_URL          # ex : jdbc:postgresql://HOTE/NOM_BASE?sslmode=require
+        sync: false
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: JWT_SECRET      # 32 caractères minimum
+        generateValue: true
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: KITCHEN_EMAIL
+        sync: false
+      - key: KITCHEN_PASSWORD
+        sync: false
+      - key: SEED_DEMO       # true = crée la carte de démonstration au premier démarrage
+        value: "true"
+      - key: CORS_ORIGINS    # URL du front (facultatif pour *.netlify.app)
+        sync: false
